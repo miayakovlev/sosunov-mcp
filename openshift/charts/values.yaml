@@ -1,0 +1,55 @@
+# Значения по умолчанию. Переопределяйте в openshift/chart-values.yaml или через CI.
+
+nameOverride: ""
+fullnameOverride: ""
+
+replicas: 1
+
+image:
+  repository: image-registry.openshift-image-registry.svc:5000/openshift/sosunov-mcp
+  tag: latest
+  pullPolicy: IfNotPresent
+
+podAnnotations: {}
+
+resources:
+  limits:
+    memory: 512Mi
+    cpu: 500m
+  requests:
+    memory: 256Mi
+    cpu: 100m
+
+service:
+  type: ClusterIP
+  port: 9101
+  targetPort: 9101
+
+# Несекретные переменные (попадают в ConfigMap)
+config:
+  MCP_HOST: "0.0.0.0"
+  MCP_PORT: "9101"
+  MCP_ISSUER_URL: "https://myday.local"
+  MCP_RESOURCE_SERVER_URL: "https://myday.local"
+  POSTGRES_HOST: "postgresql"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "myday"
+  POSTGRES_USER: "myday"
+  POSTGRES_SSLMODE: "prefer"
+  TX_AGENT_URL: "http://tx-agent:9200/mcp"
+
+# Секреты: задайте в chart-values или создайте Secret вручную в проекте
+secrets:
+  # если true — генерируется Secret из полей ниже (только для dev)
+  generate: false
+  # если задано — Deployment читает этот Secret вместо {{ release }}-credentials
+  existingSecret: ""
+  postgresPassword: "change-me"
+  gatewayToken: "change-me"
+
+# Istio VirtualService (опционально)
+istio:
+  enabled: false
+  gateway: ""
+  hosts:
+    - sosunov-mcp.example.com

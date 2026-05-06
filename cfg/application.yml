@@ -1,0 +1,26 @@
+# Пример конфигурации (зеркало для пайплайнов / документации).
+# В рантайме приложение читает в основном переменные окружения из ConfigMap/Secret.
+
+app:
+  name: sosunov-mcp
+  description: MyDay MCP (геймификация, челленджи)
+
+mcp:
+  host: "${MCP_HOST:127.0.0.1}"
+  port: "${MCP_PORT:9101}"
+  issuer_url: "${MCP_ISSUER_URL:https://myday.local}"
+  resource_server_url: "${MCP_RESOURCE_SERVER_URL:https://myday.local}"
+
+tx_agent:
+  url: "${TX_AGENT_URL:http://127.0.0.1:9200/mcp}"
+
+postgres:
+  host: "${POSTGRES_HOST:127.0.0.1}"
+  port: "${POSTGRES_PORT:5432}"
+  database: "${POSTGRES_DB:myday}"
+  user: "${POSTGRES_USER:myday}"
+  # пароль только из Secret: POSTGRES_PASSWORD
+
+security:
+  # токен только из Secret: GATEWAY_TOKEN
+  gateway_token: "${GATEWAY_TOKEN}"

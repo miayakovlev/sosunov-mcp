@@ -4,30 +4,41 @@
 
 | Компонент | Порт | Назначение |
 |-----------|------|------------|
-| `server.py` (этот проект) | **9101** | MCP over HTTP (`streamable-http`) |
-| tx-agent | **9200** | RPC `tools/call` → `getTransactionsForPeriod`, … |
+| приложение в `python/server.py` | **9101** | MCP over HTTP (`streamable-http`), хост задаётся **`MCP_HOST`** (в кластере обычно `0.0.0.0`) |
+| tx-agent | **9200** | RPC `tools/call` → `getTransactionsForPeriod`, URL — **`TX_AGENT_URL`** |
 
 В коде упомянут WS proxy на **9100** — это внешняя обвязка, в репозитории только приложение на **9101**.
+
+Структура выровнена под корпоративный Python-шаблон для **OpenShift** (каталог приложения `python/`, `cfg/`, Helm под `openshift/`, `Dockerfile` в корне).
 
 ---
 
 ## Структура репозитория
 
-| Файл | Назначение |
+| Путь | Назначение |
 |------|------------|
-| `server.py` | FastMCP приложение, инструменты, `_init_db()` |
-| `db_config.py` | Сборка DSN PostgreSQL из переменных окружения |
-| `mock_tx_agent.py` | Локальный мок tx-agent для тестов без боевого агента |
+| `python/server.py` | FastMCP: инструменты, `_init_db()` |
+| `python/db.py` | DSN PostgreSQL из переменных окружения |
+| `python/config.py` | `GATEWAY_TOKEN`, `TX_AGENT_URL`, `MCP_HOST` / `MCP_PORT`, issuer URLs |
+| `python/common_utils.py` | Общие утилиты (расширение под стандарты компании) |
+| `python/controller.py`, `python/fill_template.py` | Заготовки под шаблон пайплайнов (логика MCP в `server.py`) |
+| `python/mock_tx_agent.py` | Локальный мок tx-agent |
+| `cfg/application.yml` | Пример ключей конфигурации (ожидаются env в рантайме) |
+| `cfg/default.txt` | Краткое описание сервиса |
+| `openshift/charts/` | Helm chart: Deployment, Service, ConfigMap, Secret (опц.), VirtualService (опц.) |
+| `openshift/chart-values.yaml` | Пример переопределений для окружений / CI |
+| `Dockerfile` | Сборка образа (non-root `1001`, `PYTHONPATH=/opt/app-root/python`) |
+| `pip.conf` | Корпоративный PyPI при необходимости |
 | `requirements.txt` | Зависимости Python |
-| `.env.example` | Шаблон подключения к БД |
+| `.env.example` | Шаблон переменных для локального запуска |
 
 ---
 
 ## Требования
 
 - **Python 3.10+** (используются типы вида `list[int] | None`)
-- **PostgreSQL** (локально или удалённо)
-- Для продакшена — реальный **tx-agent** на порту из `TX_AGENT_URL` в `server.py` (или прокси)
+- **PostgreSQL**
+- **tx-agent** доступен по **`TX_AGENT_URL`** (в кластере — DNS сервиса, не `127.0.0.1`)
 
 ---
 
@@ -49,7 +60,7 @@ chmod 600 .env
 
 ## PostgreSQL
 
-Параметры задаются переменными окружения (**см. `db_config.py`**):
+Параметры БД задаются переменными окружения (**см. `python/db.py`**); остальные настройки приложения — **`python/config.py`** и `.env.example`:
 
 | Переменная | По умолчанию |
 |------------|----------------|
@@ -60,6 +71,8 @@ chmod 600 .env
 | `POSTGRES_PASSWORD` | `myday` |
 | `POSTGRES_SSLMODE` | `prefer` |
 
+Дополнительно (см. `.env.example`): `MCP_HOST`, `MCP_PORT`, `TX_AGENT_URL`, `GATEWAY_TOKEN`, `MCP_ISSUER_URL`, `MCP_RESOURCE_SERVER_URL`.
+
 Один раз создайте роль и базу (от суперпользователя Postgres), например:
 
 ```sql
@@ -67,7 +80,7 @@ CREATE ROLE myday LOGIN PASSWORD 'myday';
 CREATE DATABASE myday OWNER myday;
 ```
 
-При первом импорте/запуске `server.py` выполняется **`_init_db()`** — создаются таблицы ниже, если их ещё нет.
+При первом импорте/запуске `python/server.py` выполняется **`_init_db()`** — создаются таблицы ниже, если их ещё нет.
 
 Смотреть данные нужно в базе **`myday`**, схема **`public`**, а не в системной базе `postgres`.
 
@@ -225,21 +238,25 @@ CREATE DATABASE myday OWNER myday;
 
 ---
 
-## Запуск
+## Запуск (локально)
 
-**1. (Опционально для локальных тестов)** мок tx-agent:
+Каталог с репозиторием должен быть в `PYTHONPATH`, чтобы импортировать пакет `python/` как модули верхнего уровня (`config`, `db`).
+
+**1. (Опционально)** мок tx-agent:
 
 ```bash
 set -a; source .env; set +a
-PYTHONPATH="$(pwd)" .venv/bin/python mock_tx_agent.py
+PYTHONPATH="$(pwd)/python" .venv/bin/python "$(pwd)/python/mock_tx_agent.py"
 ```
 
 **2. MCP‑сервер:**
 
 ```bash
 set -a; source .env; set +a
-PYTHONPATH="$(pwd)" .venv/bin/python server.py
+PYTHONPATH="$(pwd)/python" .venv/bin/python "$(pwd)/python/server.py"
 ```
+
+Для локали в `.env` можно оставить `MCP_HOST=127.0.0.1`. В OpenShift в ConfigMap задано **`MCP_HOST=0.0.0.0`**.
 
 Ожидаемый лог: инициализация схемы и `Uvicorn running on http://127.0.0.1:9101`.
 
@@ -249,7 +266,34 @@ PYTHONPATH="$(pwd)" .venv/bin/python server.py
 kill -9 "$(lsof -tiTCP:9101 -sTCP:LISTEN)"
 ```
 
-Аналогично для мока: порт **9200**.
+Аналогично для мока: порт **9200**
+
+---
+
+## OpenShift / Helm
+
+Образ собирается из корня репозитория:
+
+```bash
+podman build -t sosunov-mcp:latest .
+# или docker build ...
+```
+
+Публикация в реестр проекта и ссылка на образ в `openshift/chart-values.yaml` / `values.yaml`.
+
+Установка чарта (после создания Secret с ключами `postgres-password` и `gateway-token`, если `secrets.generate: false`):
+
+```bash
+helm upgrade --install sosunov-mcp ./openshift/charts \
+  -f openshift/chart-values.yaml \
+  -n YOUR_NAMESPACE
+```
+
+Для отладки в dev можно включить генерацию Secret в values: `secrets.generate: true` (не для продакшена).
+
+Включение Istio **VirtualService**: `istio.enabled: true` и корректный `istio.gateway`; хосты — в `istio.hosts`.
+
+Подробнее — комментарии в `openshift/charts/values.yaml` и вывод **`helm upgrade ... --dry-run`** / `helm template`.
 
 ---
 
@@ -258,7 +302,7 @@ kill -9 "$(lsof -tiTCP:9101 -sTCP:LISTEN)"
 Эндпоинт: `http://127.0.0.1:9101/mcp`.
 
 1. **`initialize`** — в ответе приходит заголовок **`mcp-session-id`** (обязательно сохранять).
-2. Дальнейшие запросы (например **`tools/call`**) отправляются с заголовком **`mcp-session-id`** и заголовком **`Authorization: Bearer <токен>`**, где токен должен совпасть с **`GATEWAY_TOKEN`** в `server.py`.
+2. Дальнейшие запросы (например **`tools/call`**) отправляются с заголовком **`mcp-session-id`** и заголовком **`Authorization: Bearer <токен>`**, где токен должен совпасть с переменной **`GATEWAY_TOKEN`** (`python/config.py`).
 
 Формат тела — JSON-RPC 2.0; ответ может прийти как SSE (`event: message` + `data: {...}`).
 
@@ -277,13 +321,13 @@ kill -9 "$(lsof -tiTCP:9101 -sTCP:LISTEN)"
 - `buildChallengeDigest` — дайджест завершённого челленджа
 - `buildPredictedChain` — предрасчёт цепочки на следующий месяц
 
-Без живого **tx-agent** вызов **`scheduledProgressCheck`** завершится ошибкой сети; с **`mock_tx_agent.py`** можно прогнать сценарий локально.
+Без живого **tx-agent** вызов **`scheduledProgressCheck`** завершится ошибкой сети; с **`python/mock_tx_agent.py`** можно прогнать сценарий локально.
 
 ---
 
 ## Безопасность
 
-- **`GATEWAY_TOKEN`** сейчас захардкожен в `server.py` — для любой среды кроме локальной тестовой лучше вынести в переменную окружения и ротировать.
+- **`GATEWAY_TOKEN`** задаётся через окружение (в Helm — из Secret); дефолт в `config.py` только для локальной разработки.
 - Файл **`.env`** с паролем БД не коммитить; права `chmod 600`.
 
 ---

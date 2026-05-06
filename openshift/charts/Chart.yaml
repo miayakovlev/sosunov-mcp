@@ -1,0 +1,6 @@
+apiVersion: v2
+name: sosunov-mcp
+description: MyDay MCP service for OpenShift
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

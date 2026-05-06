@@ -1,0 +1,18 @@
+# Переопределения для CI / окружений. Пример:
+# helm upgrade --install sosunov-mcp ./openshift/charts -f openshift/chart-values.yaml -n YOUR_NS
+
+image:
+  repository: image-registry.openshift-image-registry.svc:5000/YOUR_PROJECT/sosunov-mcp
+  tag: latest
+
+config:
+  POSTGRES_HOST: "postgresql.YOUR_PROJECT.svc.cluster.local"
+  TX_AGENT_URL: "http://tx-agent.YOUR_PROJECT.svc.cluster.local:9200/mcp"
+
+# Для прод: secrets.generate=false и заранее созданный Secret, либо SealedSecrets / ExternalSecret
+secrets:
+  generate: false
+  existingSecret: ""
+
+istio:
+  enabled: false

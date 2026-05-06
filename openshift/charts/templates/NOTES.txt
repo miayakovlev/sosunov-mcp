@@ -1,0 +1,23 @@
+Релиз: {{ include "sosunov-mcp.fullname" . }}, namespace: {{ .Release.Namespace }}
+
+1. MCP (внутри кластера):
+   http://{{ include "sosunov-mcp.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}/mcp
+
+2. Secret для POSTGRES_PASSWORD и GATEWAY_TOKEN:
+{{- if .Values.secrets.generate }}
+   Имя: {{ include "sosunov-mcp.secretName" . }} (создан чартом)
+{{- else if .Values.secrets.existingSecret }}
+   Используется существующий Secret: {{ .Values.secrets.existingSecret }}
+   Ключи: postgres-password, gateway-token
+{{- else }}
+   Создайте Secret до деплоя, имя по умолчанию:
+   {{ include "sosunov-mcp.secretName" . }}
+   Пример:
+   oc create secret generic {{ include "sosunov-mcp.secretName" . }} \
+     --from-literal=postgres-password='...' \
+     --from-literal=gateway-token='...' \
+     -n {{ .Release.Namespace }}
+{{- end }}
+
+3. Логи:
+   oc logs -l app.kubernetes.io/instance={{ .Release.Name }} -n {{ .Release.Namespace }} -f

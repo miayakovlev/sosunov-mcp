@@ -13,15 +13,13 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 from mcp.server.auth.middleware.bearer_auth import AccessToken
 from mcp.server.auth.settings import AuthSettings
-from db_config import get_postgres_dsn
-
-GATEWAY_TOKEN = "Ew88G9YHkI1Br8nT1Kk7FfH2RZFSEzU_iTVAxHow3bo"
-TX_AGENT_URL = "http://127.0.0.1:9200/mcp"
+from config import get_settings
+from db import get_postgres_dsn
 
 
 class _Verifier:
     async def verify_token(self, token: str) -> AccessToken | None:
-        if token == GATEWAY_TOKEN:
+        if token == get_settings().gateway_token:
             return AccessToken(token=token, client_id="myday-gateway", scopes=["mcp:tools"])
         return None
 
@@ -157,10 +155,11 @@ async def _call_tx_agent(method: str, arguments: dict) -> dict:
     """Внутренний вызов к tx-agent для получения данных по транзакциям."""
     import httpx
     rpc_id = uuid.uuid4().hex[:8]
+    s = get_settings()
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
-        "Authorization": f"Bearer {GATEWAY_TOKEN}",
+        "Authorization": f"Bearer {s.gateway_token}",
     }
     payload = {
         "jsonrpc": "2.0",
@@ -169,7 +168,7 @@ async def _call_tx_agent(method: str, arguments: dict) -> dict:
         "params": {"name": method, "arguments": arguments},
     }
     async with httpx.AsyncClient() as client:
-        resp = await client.post(TX_AGENT_URL, json=payload, headers=headers, timeout=60)
+        resp = await client.post(s.tx_agent_url, json=payload, headers=headers, timeout=60)
         body = resp.text
         if body.startswith("event:"):
             for line in body.split("\n"):
@@ -182,6 +181,8 @@ async def _call_tx_agent(method: str, arguments: dict) -> dict:
             return json.loads(content[0].get("text", "{}"))
         return {}
 
+
+_settings = get_settings()
 
 MYDAY_PROMPT = """Мой День — персональный финансовый помощник в системе Рататуй. Геймификация, челленджи по экономии.
 
@@ -200,12 +201,12 @@ buildPredictedChain — предрасчёт цепочки на следующ�
 
 mcp = FastMCP(
     "moy_den",
-    host="127.0.0.1",
-    port=9101,
+    host=_settings.mcp_host,
+    port=_settings.mcp_port,
     instructions=MYDAY_PROMPT,
     auth=AuthSettings(
-        issuer_url="https://myday.local",
-        resource_server_url="https://myday.local",
+        issuer_url=_settings.mcp_issuer_url,
+        resource_server_url=_settings.mcp_resource_server_url,
     ),
     token_verifier=_Verifier(),
 )

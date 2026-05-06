@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
@@ -61,8 +62,10 @@ class MockTxHandler(BaseHTTPRequestHandler):
 
 
 def main():
-    server = HTTPServer(("127.0.0.1", 9200), MockTxHandler)
-    print("mock tx-agent listening on http://127.0.0.1:9200/mcp", flush=True)
+    host = os.environ.get("MOCK_TX_BIND", "127.0.0.1")
+    port = int(os.environ.get("MOCK_TX_PORT", "9200"))
+    server = HTTPServer((host, port), MockTxHandler)
+    print(f"mock tx-agent listening on http://{host}:{port}/mcp", flush=True)
     server.serve_forever()
 
 
